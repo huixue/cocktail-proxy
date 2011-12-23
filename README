@@ -1,0 +1,19 @@
+This is a very basic HTTP proxy.  Currently it will create a new
+thread for each new client connection and use blocking I/O calls to
+get the request from the browser and then get a reply from the server.
+
+Normal proxy usage: ./twproxy
+Voting proxy usage: ./twproxy -v
+
+To use the SSL/TLS MITM functionality you will need to generate a
+private key and a self-signed certificate.  To generate a key you can
+use the following command:
+
+openssl genrsa -out privkey.pem 2048
+
+and for a self-signed certificate using that private key:
+
+openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
+
+For more information about certificates and key, please refer to the
+openssl documentation, which is where these examples came from.
