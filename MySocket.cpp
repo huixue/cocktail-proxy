@@ -62,7 +62,9 @@
 using namespace std;
 
 #define CHK_SSL(err) if ((err)==-1) { ERR_print_errors_fp(stderr); exit(2); }
-#define CHK_NULL(x) if ((x)==NULL) exit (1)
+
+#define CHK_NULL(x) if ((x)==NULL) do{ printf("%d chk_null failed\n", __LINE__); exit (1);} while(0);
+
 
 #define HOME "./"
 #define CERTF  HOME "cacert.pem"
@@ -102,7 +104,6 @@ MySocket::MySocket(const char *inetAddr, int port)
                 sizeof(server)) == -1 ) {
         throw MySocketException("Did not connect to the server");
     }
-    
 }
 
 MySocket::MySocket(int socketFileDesc)
@@ -176,6 +177,8 @@ X509 *MySocket::makeAndInitCert()
 
 void MySocket::initNewName(X509_NAME *new_name, X509_NAME *server_cert_subj_name)
 {
+    assert(new_name != NULL);
+    assert(server_cert_subj_name != NULL);
         //now setup "CN"
     int serv_cert_subjname_ent_num = X509_NAME_entry_count(server_cert_subj_name);
     mitm_dbg("subject name entry number: %d\n", serv_cert_subjname_ent_num);
@@ -331,7 +334,7 @@ void MySocket::enableSSLClient(void)
     int err = SSL_connect (ssl);                     CHK_SSL(err);
     
     mitm_dbg("SSL connection using %s\n", SSL_get_cipher (ssl));
-
+/*
     X509 *server_cert = SSL_get_peer_certificate (ssl);       CHK_NULL(server_cert);
     mitm_dbg("Server certificate:\n");
 
@@ -345,6 +348,7 @@ void MySocket::enableSSLClient(void)
     mitm_dbg("\t issuer: %s\n", str);
     OPENSSL_free (str);
     X509_free (server_cert);
+*/
     isSSL = true;
 }
 

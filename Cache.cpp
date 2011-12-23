@@ -105,6 +105,12 @@ void Cache::addToStore(string url, CacheEntry *ent) {
     m_store.insert(pair<string, CacheEntry *>(url, ent));
 }
 
+static void dbg_print_vector(CacheEntry *ent, string url, int browserId, string msg) {
+    vector<int> v = ent->getReqVec();
+    printf("%d: %d %d %d %s: %s\n", browserId, v[0], v[1], v[2], url.c_str(), msg.c_str());
+}
+
+
 int Cache::votingFetchInsertWriteback(string url, string request, int browserId, MySocket *browserSock, string host, bool isSSL, MySocket *replySock)
 {
     assert(browserId >= 0);
@@ -114,62 +120,42 @@ int Cache::votingFetchInsertWriteback(string url, string request, int browserId,
     if(ent == NULL) {
             //first request of this url, wait till someone vote and fetch then write
             //back to brower, or keep waiting forever
-        cache_dbg("browser: %d ,%s no exist\n", browserId, url.c_str());
         ent = new CacheEntry(num_browsers, url, request);
         ent->setReqState(CACHE_NEW);
-        cache_dbg("browser: %d ,%s SET to cache_new\n", browserId, url.c_str());
         int ret = ent->updateReqVec(browserId);
-
-        vector<int> v = ent->getReqVec();
-        printf("%d %d %d %s\n", v[0], v[1], v[2], url.c_str());
-    
-        
         assert(ret == 1);
+
+        dbg_print_vector(ent, url, browserId, "new request");
+        
         addToStore(url, ent);
         while(ent->getReqState() != CACHE_IN) {
-            cache_dbg("CACHE_NEW cache before WAIT browser %d  %s\n", browserId, url.c_str());
             pthread_cond_wait(&cache_cond, &cache_mutex);
-            cache_dbg("CACHE_NEW cache AFTER WAIT browser %d  %s\n", browserId, url.c_str());
         }
         
-
-        v = ent->getReqVec();
-        printf("%d waked up\n%d %d %d %s\n", browserId, v[0], v[1], v[2], url.c_str());
+        dbg_print_vector(ent, url, browserId, "woken up");
 
         sendBrowser(browserSock, ent, browserId);
     }
     else if(ent->getReqState() == CACHE_IN) {
             //this request is fetched
-        cache_dbg("browser: %d ,%s is CACHE_IN\n", browserId, url.c_str());
-        int ret = ent->updateReqVec(browserId);
-        
-        vector<int> v = ent->getReqVec();
-        printf("%d %d %d %s\n", v[0], v[1], v[2], url.c_str());
-        
+        int ret = ent->updateReqVec(browserId);        
             //opera is really making two same requests to http://google.com, no difference
 //        assert(ret == 1);
+        dbg_print_vector(ent, url, browserId, "cache in hit");
+
         sendBrowser(browserSock, ent, browserId);
     }
     else if(ent->getReqState() == CACHE_FETCHING) {
             //somebody is fetching the request, wait till done
-        cache_dbg("browser: %d ,%s is CACHE_FETCHING\n", browserId, url.c_str());
         int ret = ent->updateReqVec(browserId);
-
-        vector<int> v = ent->getReqVec();
-        printf("fetching\n%d %d %d %s\n", v[0], v[1], v[2], url.c_str());
-
-        
 //        assert(ret == 1);
+        dbg_print_vector(ent, url, browserId, "network fetching");
+
         while(ent->getReqState() != CACHE_IN) {
-            cache_dbg("CACHE_FETCHING cache before WAIT browser %d  %s\n", browserId, url.c_str());
             pthread_cond_wait(&cache_cond, &cache_mutex);
-            cache_dbg("CACHE_FETCHING cache AFTER WAIT browser %d  %s\n", browserId, url.c_str());
         }
-
-
-        v = ent->getReqVec();
-        printf("%d waked up\n%d %d %d %s\n", browserId, v[0], v[1], v[2], url.c_str());
-
+        
+        dbg_print_vector(ent, url, browserId, "fetched");
         
         sendBrowser(browserSock, ent, browserId);
     }
@@ -177,17 +163,14 @@ int Cache::votingFetchInsertWriteback(string url, string request, int browserId,
             //vote for some previous request from someone, and FETCH
             //it won't be my own old request, find() is going to take of that
         int ret = ent->updateReqVec(browserId);
-        vector<int> v = ent->getReqVec();
-        printf("%d %d %d %s\n", v[0], v[1], v[2], url.c_str());
 //        assert(ret == 1);
-        cache_dbg("browser: %d ,%s SET to cache_fetching\n", browserId, url.c_str());
+
+        dbg_print_vector(ent, url, browserId, "voted, go fetching");
+        
         ent->setReqState(CACHE_FETCHING);
-        cache_dbg("cache UNlock browser %d  %s\n", browserId, url.c_str());
         pthread_mutex_unlock(&cache_mutex);
         fetch(ent, host, isSSL, browserId, replySock);
         pthread_mutex_lock(&cache_mutex);
-        cache_dbg("cache lock browser %d  %s\n", browserId, url.c_str());
-        cache_dbg("browser: %d ,%s SET to cache_in\n", browserId, url.c_str());
         ent->setReqState(CACHE_IN);
         sendBrowser(browserSock, ent, browserId);
     }
@@ -210,11 +193,11 @@ void Cache::getHTTPResponseVote(string host, string request, string url, int ser
     int browserId = -1;
     pthread_mutex_lock(&cache_mutex);
     browserId = serverPort - serverPorts[0];
-    cache_dbg("cache lock browser %d  %s\n", browserId, url.c_str());
+
     votingFetchInsertWriteback(url, request, browserId, browserSock, host, isSSL, replySock);
-    cache_dbg("cache UNlock browser %d  %s\n", browserId, url.c_str());
+
     pthread_mutex_unlock(&cache_mutex);
-    cache_dbg("cache BROADCAST browser %d  %s\n", browserId, url.c_str());
+
     pthread_cond_broadcast(&cache_cond);
 }
 
@@ -242,7 +225,6 @@ int Cache::fetch(CacheEntry *ent, string host, bool isSSL, int browserId, MySock
         ent->appendResponse(reply404);
         return -1;
     }
-    cache_dbg("CACHE: SENDING request %s\n", ent->getRequest().c_str());
     if(!replySock->write_bytes(ent->getRequest())) {
         cout << "returning 404" << endl;
         ent->appendResponse(reply404);
@@ -251,17 +233,12 @@ int Cache::fetch(CacheEntry *ent, string host, bool isSSL, int browserId, MySock
     printf("FETCH CALLED %s, response length: %d\n", ent->getUrl().c_str(), ent->getResponse().length());
     unsigned char buf[1024];
     int num_bytes;
-    cache_dbg("browser %d: BEFORE FETCHING %s\n", browserId, ent->getUrl().c_str());
     while((num_bytes = replySock->read(buf, sizeof(buf))) > 0) {
-        cache_dbg("CACHE: fetch read %d bytes\n", num_bytes);
         ent->appendResponse((const char *)buf, num_bytes);
-        cache_dbg("ent->resposne length: %d\n", ent->getResponse().length());
     }
     dbg_fetch(num_bytes);
 
     printf("FETCHED %s, response length: %d\n", ent->getUrl().c_str(), ent->getResponse().length());
-    cache_dbg("browser %d: done FETCHING %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
-    cache_dbg("browser %d: fetched %s\n%s\n", browserId, ent->getUrl().c_str(), ent->getResponse().c_str());
     delete replySock;
     return 0;
 }
@@ -320,57 +297,3 @@ Cache::~Cache()
     pthread_cond_destroy(&cache_cond);
     pthread_mutex_destroy(&cache_mutex);
 }
-
-
-
-/*
-bool Cache::copyNetBytes(MySocket *readSock, MySocket *writeSock)
-{
-    unsigned char buf[1024];
-    int ret;
-
-    ret = readSock->read(buf, sizeof(buf));
-    if(ret <= 0)
-        return false;
-
-    return writeSock->write_bytes(buf, ret);
-}
-
-void Cache::handleTunnel(MySocket *browserSock, MySocket *replySock)
-{
-    if(!browserSock->write_bytes(CONNECT_REPLY))
-        return;
-
-    int bFd = browserSock->getFd();
-    int rFd = replySock->getFd();    
-
-    int ret;
-    fd_set readSet;
-
-    int maxFd = (bFd > rFd) ? bFd : rFd;
-
-    while(true) {
-        FD_ZERO(&readSet);
-
-        FD_SET(rFd, &readSet);
-        FD_SET(bFd, &readSet);
-
-        ret = select(maxFd+1, &readSet, NULL, NULL, NULL);
-
-        if(ret <= 0)
-            break;
-
-        if(FD_ISSET(rFd, &readSet)) {
-            if(!copyNetBytes(replySock, browserSock)) {
-                break;
-            }
-        }
-
-        if(FD_ISSET(bFd, &readSet)) {
-            if(!copyNetBytes(browserSock, replySock)) {
-                break;
-            }
-        }
-    }
-}
-*/

@@ -97,6 +97,9 @@ void run_client(MySocket *sock, int serverPort)
         MySocket *replySock = NULL;
         
         if(request->isConnect()) {
+            host = request->getHost();
+            url = request->getUrl();
+        
 //            cerr << serverPort << " connect request for " << host << " " << url << endl;
             if(!sock->write_bytes(CONNECT_REPLY)) {
                 error = true;
@@ -116,6 +119,12 @@ void run_client(MySocket *sock, int serverPort)
         
         if(!error) {
             string req = request->getRequest();
+                //these two lines here are for HTTPS, otherwise host and url are the ones in CONNECT
+            host = request->getHost();
+            url = request->getUrl();
+
+            cerr << serverPort << " request for " << host << " " << url << endl;
+
             if(gVOTING == 0) {
                 cache()->getHTTPResponseNoVote(host, req, url, serverPort, sock, isSSL, replySock);
             } else {
@@ -230,6 +239,70 @@ static void get_opts(int argc, char *argv[])
         }
     }
 }
+
+static pthread_mutex_t *lock_cs;
+static long *lock_count;
+
+static void pthreads_locking_callback(int mode, int type, char *file, int line)
+{
+#ifdef undef
+    fprintf(stderr,"thread=%4d mode=%s lock=%s %s:%d\n",
+            CRYPTO_thread_id(),
+            (mode&CRYPTO_LOCK)?"l":"u",
+            (type&CRYPTO_READ)?"r":"w",file,line);
+#endif
+    if (mode & CRYPTO_LOCK) {
+        pthread_mutex_lock(&(lock_cs[type]));
+        lock_count[type]++;
+    } else {
+        pthread_mutex_unlock(&(lock_cs[type]));
+    }
+}
+
+static unsigned long pthreads_thread_id(void)
+{
+    unsigned long ret;
+
+    ret=(unsigned long)pthread_self();
+    return(ret);
+}
+
+//openssl_thread_setup(): stole from mttest.c in openssl/crypto/threads/mttest.c
+static void openssl_thread_setup()
+{
+    int i;
+    
+    lock_cs = (pthread_mutex_t *)OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    lock_count = (long *)OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
+    for (i = 0; i < CRYPTO_num_locks(); i++)
+    {
+        lock_count[i] = 0;
+        pthread_mutex_init(&(lock_cs[i]),NULL);
+    }
+    
+    CRYPTO_set_id_callback((unsigned long (*)())pthreads_thread_id);
+    CRYPTO_set_locking_callback((void (*)(int, int, const char *, int))pthreads_locking_callback);
+}
+//openssl_thread_cleanup(): stole from mttest.c in openssl/crypto/threads/mttest.c
+static void openssl_thread_cleanup()
+{
+    int i;
+
+    CRYPTO_set_locking_callback(NULL);
+    fprintf(stderr,"cleanup\n");
+    for (i = 0; i < CRYPTO_num_locks(); i++)
+    {
+        pthread_mutex_destroy(&(lock_cs[i]));
+        fprintf(stderr,"%8ld:%s\n",lock_count[i], CRYPTO_get_lock_name(i));
+    }
+    OPENSSL_free(lock_cs);
+    OPENSSL_free(lock_count);
+
+    fprintf(stderr,"done cleanup\n");
+
+}
+
+
 int main(int argc, char *argv[])
 {
         //if started with "-v" option, voting will be enabled. Otherwise, just a plain
@@ -241,6 +314,8 @@ int main(int argc, char *argv[])
     // initialize ssl library
     SSL_load_error_strings();
     SSL_library_init();
+
+    openssl_thread_setup();
 
     cout << "number of servers: " << NUM_SERVERS << endl;
 
@@ -259,5 +334,8 @@ int main(int argc, char *argv[])
         ret = pthread_join(server_threads[idx], NULL);
         assert(ret == 0);
     }
+    
+    openssl_thread_cleanup();
+    
     return 0;
 }
