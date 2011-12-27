@@ -128,9 +128,6 @@ void run_client(MySocket *sock, int serverPort)
             if(gVOTING == 0) {
                 cache()->getHTTPResponseNoVote(host, req, url, serverPort, sock, isSSL, replySock);
             } else {
-//                if(isSSL == true)
-//                    cache()->getHTTPResponseVote(host, req, url, serverPort, sock, isSSL, replySock);
-//                else
                     cache()->getHTTPResponseVote(host, req, url, serverPort, sock, isSSL, replySock);
             }
             
@@ -305,8 +302,8 @@ static void openssl_thread_cleanup()
 
 int main(int argc, char *argv[])
 {
-        //if started with "-v" option, voting will be enabled. Otherwise, just a plain
-        //proxy
+        //if started with "-v" option, voting will be enabled.
+        //Otherwise, just a plain proxy            
     get_opts(argc, argv);  
     // get socket write errors from write call
     signal(SIGPIPE, SIG_IGN);
