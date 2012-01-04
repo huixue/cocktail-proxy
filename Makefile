@@ -3,9 +3,9 @@ all: $(EXE)
 
 CC = g++
 CFLAGS = -g -W -Wall -Wno-unused
-LDFLAGS = -lpthread -lssl
+LDFLAGS = -lpthread -lssl -lcurl
 
-OBJS = main.o MyServerSocket.o MySocket.o HTTPRequest.o http_parser.o HTTP.o Cache.o CacheEntry.o
+OBJS = main.o MyServerSocket.o MySocket.o HTTPRequest.o http_parser.o HTTP.o Cache.o CacheEntry.o UI.o UIQueueEntry.o
 
 -include $(OBJS:.o=.d)
 

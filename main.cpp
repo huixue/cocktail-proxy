@@ -57,6 +57,8 @@
 #include "dbg.h"
 #include "time.h"
 
+#include "UI.h"
+
 using namespace std;
 
 int serverPorts[] = {8808, 8809, 8810};
@@ -82,8 +84,7 @@ static int gVOTING = 0;
 
 void run_client(MySocket *sock, int serverPort)
 {
-    HTTPRequest *request = new HTTPRequest(sock, serverPort);
-    
+    HTTPRequest *request = new HTTPRequest(sock, serverPort);    
 //    httpreq_dbg("%d: ", serverPort);
     if(!request->readRequest()) {
         cout << "did not read request" << endl;
@@ -98,8 +99,7 @@ void run_client(MySocket *sock, int serverPort)
         
         if(request->isConnect()) {
             host = request->getHost();
-            url = request->getUrl();
-        
+            url = request->getUrl();        
 //            cerr << serverPort << " connect request for " << host << " " << url << endl;
             if(!sock->write_bytes(CONNECT_REPLY)) {
                 error = true;
@@ -125,12 +125,20 @@ void run_client(MySocket *sock, int serverPort)
 
             cerr << serverPort << " request for " << host << " " << url << endl;
 
-            if(gVOTING == 0) {
-                cache()->getHTTPResponseNoVote(host, req, url, serverPort, sock, isSSL, replySock);
-            } else {
-                    cache()->getHTTPResponseVote(host, req, url, serverPort, sock, isSSL, replySock);
+            int isUI = uimgr()->isUIRequest(url);
+            if(isUI != 0) {
+                if(isUI > 0)
+                    uimgr()->processUILog(sock, url, serverPort);
+                else
+                    uimgr()->processUIGet(sock, serverPort);
             }
-            
+            else {
+                if(gVOTING == 0) {
+                    cache()->getHTTPResponseNoVote(host, req, url, serverPort, sock, isSSL, replySock);
+                } else {
+                    cache()->getHTTPResponseVote(host, req, url, serverPort, sock, isSSL, replySock);
+                }
+            }
         }
     }    
 
@@ -149,14 +157,14 @@ void *client_thread(void *arg)
     
     pthread_mutex_lock(&mutex);
     numThreads++;
-    //cout << "numThread = " << numThreads << endl;
+        //cout << "before numThread = " << numThreads << endl;
     pthread_mutex_unlock(&mutex);
 
     run_client(sock, serverPort);
 
     pthread_mutex_lock(&mutex);
     numThreads--;
-    //cout << "numThread = " << numThreads << endl;
+        //cout << "after numThread = " << numThreads << endl;
 
     // This is a hack because linux is having trouble freeing memory
     // in a different thread, so instead we will let the server thread
@@ -200,6 +208,7 @@ void *server_thread(void *arg)
         }
         pthread_mutex_lock(&mutex);
         while(killQueue.size() > 0) {
+                //ui_dbg("server_thread killing killQueue\n");
             delete killQueue.front();
             killQueue.pop();
         }
