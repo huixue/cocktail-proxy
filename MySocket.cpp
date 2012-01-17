@@ -130,6 +130,7 @@ EVP_PKEY * MySocket::readPublicKey(const char *certfile)
     x509 = PEM_read_X509(fp, NULL, 0, NULL);
     if (x509 == NULL) {
         ERR_print_errors_fp (stderr);
+        fclose (fp);
         return NULL;
     }
     fclose (fp);

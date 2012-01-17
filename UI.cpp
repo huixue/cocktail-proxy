@@ -4,6 +4,7 @@
 #include "assert.h"
 #include "dbg.h"
 #include <curl/curl.h>
+#include <sstream>
 using namespace std;
 
 static UIMgr globalUIMgr;
@@ -14,10 +15,27 @@ const string UIMgr::UI_GET_LABEL = "/bftproxylolo/get";
 const int UIMgr::PRIMARY = 8810;
 const int UIMgr::REP_1 = 8808;
 const int UIMgr::REP_2 = 8809;
+/*
 const string UIMgr::FEEDBACK_PRIM_LOG = "HTTP/1.0 200\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
 const string UIMgr::FEEDBACK_REP_LOG  = "HTTP/1.0 301\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
 const string UIMgr::FEEDBACK_NOOP_GET = "HTTP/1.0 200\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
 const string UIMgr::FEEDBACK_REP_GET  = "HTTP/1.0 200\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
+*/
+const string UIMgr::FEEDBACK_PRIM_LOG = "HTTP/1.0 200\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
+const string UIMgr::FEEDBACK_REP_LOG  = "HTTP/1.0 301\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
+const string UIMgr::FEEDBACK_NOOP_GET = "HTTP/1.0 200\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
+const string UIMgr::FEEDBACK_REP_GET  = "HTTP/1.0 200\nContent-Type: text/plain\nCache-Control: no-cache\n\n";
+
+const string UIMgr::FEEDBACK_PRIM_LOG_HTTPS =
+    "HTTP/1.0 200\r\nContent-Type: text/plain\r\nContent-Length: 13\r\nCache-Control: no-cache\r\n\r\n<html></html>";
+const string UIMgr::FEEDBACK_REP_LOG_HTTPS  =
+    "HTTP/1.0 301\r\nContent-Type: text/plain\r\nContent-Length: 13\r\nCache-Control: no-cache\r\n\r\n<html></html>";
+const string UIMgr::FEEDBACK_NOOP_GET_HTTPS =
+    "HTTP/1.0 200\r\nContent-Type: text/plain\r\nContent-Length: 13\r\nCache-Control: no-cache\r\n\r\n<html></html>";
+const string UIMgr::FEEDBACK_REP_GET_HTTPS_BEGIN  = "HTTP/1.0 200\r\nContent-Type: text/plain\r\nContent-Length: ";
+const string UIMgr::FEEDBACK_REP_GET_HTTPS_MIDDLE  = "\r\nCache-Control: no-cache\r\n\r\n<html>";
+const string UIMgr::FEEDBACK_REP_GET_HTTPS_END  = "</html>";
+
 
 long UIMgr::seq_num = 0;
 
@@ -86,8 +104,21 @@ string UIMgr::decodeUrl(string url) {
     return ret;
 }
 
+void UIMgr::processUILog(MySocket *sock, string url, int serverPort, bool isSSL) {
+    if(!isSSL) {
+        processUILog_http(sock, url, serverPort);
+    } else
+        processUILog_https(sock, url, serverPort);
+}
+void UIMgr::processUIGet(MySocket *sock, int serverPort, bool isSSL) {
+    if(!isSSL) {
+        processUIGet_http(sock, serverPort);
+    } else
+        processUIGet_https(sock, serverPort);
+}
 
-void UIMgr::processUIGet(MySocket *sock, int serverPort) {
+
+void UIMgr::processUIGet_http(MySocket *sock, int serverPort) {
     int elem_port;
     string element = getElement(serverPort, &elem_port);
     string feedback = "";
@@ -101,13 +132,47 @@ void UIMgr::processUIGet(MySocket *sock, int serverPort) {
             assert(decodedUrl.length() > 0);
                 //ui_dbg("decoded: %s\n", decodedUrl.c_str());
             size_t queryPos = decodedUrl.find(UI_LOG_LABEL);
-            assert(queryPos >= 0);
+            assert(queryPos != string::npos);
             assert(decodedUrl.length() >= queryPos + UI_LOG_LABEL.length());
             string queryStr = decodedUrl.substr(queryPos + UI_LOG_LABEL.length());
             assert(queryStr.length() > 0);
             feedback = FEEDBACK_REP_GET + queryStr;
-            ui_dbg("sending back:\n|%s|TO%d\n", feedback.c_str(), serverPort);
+            ui_dbg("sending back:\n|%s|TO%d\n", feedback.c_str(), serverPort);            
+                //assert(false);
+        }
+            //usleep(5000000);
+        usleep(50000);
+
+        ret = sock->write_bytes(feedback);
+        assert(ret);
+    }
+}
+void UIMgr::processUIGet_https(MySocket *sock, int serverPort) {
+    int elem_port;
+    string element = getElement(serverPort, &elem_port);
+    string feedback = "";
+    bool ret = false;
+    stringstream length_stream;
+    if(elem_port != serverPort) {
+        if(element.length() == 0) {
+            feedback = FEEDBACK_NOOP_GET_HTTPS;
+                //ui_dbg("NO DATA to send, ack %d\n", serverPort);
+        } else {
+            string decodedUrl = decodeUrl(element);
+            assert(decodedUrl.length() > 0);
+                //ui_dbg("decoded: %s\n", decodedUrl.c_str());
+            size_t queryPos = decodedUrl.find(UI_LOG_LABEL);
+            assert(queryPos != string::npos);
+            assert(decodedUrl.length() >= queryPos + UI_LOG_LABEL.length());
+            string queryStr = decodedUrl.substr(queryPos + UI_LOG_LABEL.length());
+            assert(queryStr.length() > 0);
             
+            length_stream << queryStr.length() + 13;
+            
+            feedback = FEEDBACK_REP_GET_HTTPS_BEGIN + length_stream.str() +
+                FEEDBACK_REP_GET_HTTPS_MIDDLE + queryStr + FEEDBACK_REP_GET_HTTPS_END;
+            
+            ui_dbg("sending back:\n|%s|TO%d\n", feedback.c_str(), serverPort);            
                 //assert(false);
         }
             //usleep(5000000);
@@ -119,7 +184,7 @@ void UIMgr::processUIGet(MySocket *sock, int serverPort) {
 }
 
 
-void UIMgr::processUILog(MySocket *sock, string url, int serverPort) {
+void UIMgr::processUILog_http(MySocket *sock, string url, int serverPort) {
     bool ret = false;
     if(serverPort == PRIMARY) {
         cout << "primary reporting UI " << url << endl;
@@ -132,6 +197,21 @@ void UIMgr::processUILog(MySocket *sock, string url, int serverPort) {
         assert(ret);
     }
 }
+
+void UIMgr::processUILog_https(MySocket *sock, string url, int serverPort) {
+    bool ret = false;
+    if(serverPort == PRIMARY) {
+        cout << "primary reporting UI " << url << endl;
+            //assert(false);
+        addElement(url, serverPort);
+        ret = sock->write_bytes(FEEDBACK_PRIM_LOG_HTTPS);
+        assert(ret);
+    } else {
+        ret = sock->write_bytes(FEEDBACK_REP_LOG_HTTPS);
+        assert(ret);
+    }
+}
+
 
 void UIMgr::getLock(string msg) {
     pthread_mutex_lock(&ui_mutex);
