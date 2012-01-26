@@ -10,6 +10,7 @@
 
 #include <string>
 #include <openssl/ssl.h>
+using namespace std;
 
 class MySocket {
   public:
@@ -65,7 +66,7 @@ class MySocket {
     bool write_bytes(std::string buffer);
     bool write_bytes(const void *buffer, int len);
     void __enableSSLServer(void);
-    void enableSSLServer(MySocket *);
+    void enableSSLServer(MySocket *, string);
     void enableSSLClient(void);
   
         /*
@@ -74,17 +75,26 @@ class MySocket {
     int getFd(void) { return sockFd; }
 
     void close(void);
-  
+
+    static EVP_PKEY *readPublicKey(const char *certfile);
+    static EVP_PKEY *readPrivateKey(const char *keyfile);
+
+    void printSSLError(int ret);
   protected:
         //this is the function which generate a fake certificate, based on
         //the proxy <--> remotesite connection.
-    X509 *generateFakeCert(MySocket *clentSock);
+    X509 *generateFakeCert(MySocket *clentSock, string host);
         //these are helper functions to make fake certificate
-    EVP_PKEY *readPublicKey(const char *certfile);
-    EVP_PKEY *readPrivateKey(const char *keyfile);
     X509 *readX509(const char *certfile);
     X509 *makeAndInitCert();
-    void initNewName(X509_NAME *new_name, X509_NAME *server_cert_subj_name);
+        //void initNewName(X509_NAME *new_name, X509_NAME *server_cert_subj_name);
+    void initNewNameWithHostName(X509_NAME *new_name, X509_NAME *server_cert_subj_name, string host);
+
+    static EVP_PKEY *m_privKey;
+    static EVP_PKEY *m_pubKey;
+
+        //for debugging, have to see whether browserSock read is having trouble
+    int isSSLBrowserSock;
     
     int sockFd;
     void brokenPipe(int sigNo);

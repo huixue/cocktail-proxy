@@ -141,7 +141,7 @@ void UIMgr::processUIGet_http(MySocket *sock, int serverPort) {
                 //assert(false);
         }
             //usleep(5000000);
-        usleep(50000);
+//        usleep(50000);
 
         ret = sock->write_bytes(feedback);
         assert(ret);
@@ -176,7 +176,7 @@ void UIMgr::processUIGet_https(MySocket *sock, int serverPort) {
                 //assert(false);
         }
             //usleep(5000000);
-        usleep(50000);
+//        usleep(50000);
 
         ret = sock->write_bytes(feedback);
         assert(ret);

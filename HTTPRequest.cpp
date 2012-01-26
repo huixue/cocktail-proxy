@@ -134,7 +134,9 @@ string HTTPRequest::getHost()
 }
 string HTTPRequest::getRequest()
 {
-    return m_http->getProxyRequest();
+            //return m_http->getProxyRequest("Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.2.6) Gecko/20100628 Ubuntu/10.04 (lucid) Firefox/3.6.6");
+        return m_http->getProxyRequest("Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.2.14) Gecko/20110303 Ubuntu/10.04 (lucid) Firefox/3.6.15");
+            //return m_http->getProxyRequest();
 }
 string HTTPRequest::getUrl()
 {

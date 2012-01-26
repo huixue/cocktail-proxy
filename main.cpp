@@ -58,11 +58,16 @@
 #include "time.h"
 
 #include "UI.h"
+#include "openssl/ssl.h"
 
 using namespace std;
 
 int serverPorts[] = {8808, 8809, 8810};
 #define NUM_SERVERS (sizeof(serverPorts) / sizeof(serverPorts[0]))
+
+#define HOME "./"
+#define CERTF  HOME "cacert.pem"
+#define KEYF  HOME  "privkey.pem"
 
 static string CONNECT_REPLY = "HTTP/1.1 200 Connection Established\r\n\r\n";
 
@@ -100,14 +105,15 @@ void run_client(MySocket *sock, int serverPort)
                 if(request->isConnect()) {
                         host = request->getHost();
                         url = request->getUrl();        
-                        cerr << serverPort << " connect request for " << host << " " << url << endl;
+                            //cerr << serverPort << " connect request for " << host << " " << url << endl;
                         if(!sock->write_bytes(CONNECT_REPLY)) {
                                 error = true;
                         } else {
                                 delete request;
                                 replySock = cache()->getReplySocket(host, true);
                                     //need proxy <--> remotesite socket for information needed to fake a certificate
-                                sock->enableSSLServer(replySock);
+                                sock->enableSSLServer(replySock, host.substr(0, host.find(':')));
+                                        
                                 isSSL = true;
                                 request = new HTTPRequest(sock, serverPort);
                                 if(!request->readRequest()) {
@@ -123,14 +129,18 @@ void run_client(MySocket *sock, int serverPort)
                         host = request->getHost();
                         url = request->getUrl();
 
-                        cerr << serverPort << " request for " << host << " " << url << endl;
+                            //cerr << serverPort << " request for " << host << " " << url << endl;
 
                         int isUI = uimgr()->isUIRequest(url);
                         if(isUI != 0) {
+                                    //cerr << serverPort << " request for " << host << " " << url << endl;
                                 if(isUI > 0)
                                         uimgr()->processUILog(sock, url, serverPort, isSSL);
                                 else
                                         uimgr()->processUIGet(sock, serverPort, isSSL);
+
+                                    //hx: I think if this is missing, it cause use out of file descriptor
+                                replySock->close();
                         }
                         else {
                                 if(gVOTING == 0) {
@@ -308,6 +318,13 @@ static void openssl_thread_cleanup()
 
 }
 
+void readKeys() {
+        EVP_PKEY *privKey = MySocket::readPrivateKey(KEYF);
+        assert(privKey);
+        EVP_PKEY *pubKey = MySocket::readPublicKey(CERTF);
+        assert(pubKey);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -322,7 +339,8 @@ int main(int argc, char *argv[])
         SSL_library_init();
 
         openssl_thread_setup();
-
+        readKeys();
+        
         cout << "number of servers: " << NUM_SERVERS << endl;
 
             //when generating serial number for X509, need random number
