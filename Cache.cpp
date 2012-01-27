@@ -67,7 +67,7 @@ static string reply404 = "HTTP/1.1 404 Not Found\r\nServer: twproxy\r\nConnectio
 
 extern int serverPorts[];
 
-MySocket *Cache::getReplySocket(string host, bool isSSL)
+MySocket *Cache::getReplySocket(string host, bool isSSL, int serverPort)
 {
         assert(host.find(':') != string::npos);
         assert(host.find(':') < (host.length()-1));
@@ -81,7 +81,7 @@ MySocket *Cache::getReplySocket(string host, bool isSSL)
                     //cout << "making connection to " << hostStr << ":" << port << endl;
                 replySock = new MySocket(hostStr.c_str(), port);
                 if(isSSL) {
-                        replySock->enableSSLClient();
+                        replySock->enableSSLClient(serverPort);
                 }
         } catch(char *e) {
                 cout << e << endl;
@@ -111,9 +111,9 @@ static void dbg_print_vector(CacheEntry *ent, string url, int browserId, string 
 }
 
 
-int Cache::votingFetchInsertWriteback(string url, string request, int browserId, MySocket *browserSock, string host, bool isSSL, MySocket *replySock)
-{
+int Cache::votingFetchInsertWriteback(string url, string request, int browserId, MySocket *browserSock, string host, bool isSSL, MySocket *replySock) {
         assert(browserId >= 0);
+        int ret_val = 0;        
             //find() will take care of all checks, including same url, same method, different
             //cookie for the same browser or different browser
         CacheEntry *ent = find(url, request);
@@ -125,14 +125,14 @@ int Cache::votingFetchInsertWriteback(string url, string request, int browserId,
                 int ret = ent->updateReqVec(browserId);
                 assert(ret == 1);
 
-                dbg_print_vector(ent, url, browserId, "new request");
+                dbg_print_vector(ent, url, browserId, "NULL => CACHE_NEW");
         
                 addToStore(url, ent);
                 while(ent->getReqState() != CACHE_IN) {
-                        pthread_cond_wait(&cache_cond, &cache_mutex);
+                        cache_cond_wait();
                 }
         
-                dbg_print_vector(ent, url, browserId, "woken up");
+                dbg_print_vector(ent, url, browserId, "CACHE_NEW woken up when CACHE_IN");
 
                 sendBrowser(browserSock, ent, browserId);
         }
@@ -141,7 +141,7 @@ int Cache::votingFetchInsertWriteback(string url, string request, int browserId,
                 int ret = ent->updateReqVec(browserId);        
                     //opera is really making two same requests to http://google.com, no difference
 //        assert(ret == 1);
-                dbg_print_vector(ent, url, browserId, "cache in hit");
+                dbg_print_vector(ent, url, browserId, "CACHE_IN");
 
                 sendBrowser(browserSock, ent, browserId);
         }
@@ -149,13 +149,13 @@ int Cache::votingFetchInsertWriteback(string url, string request, int browserId,
                     //somebody is fetching the request, wait till done
                 int ret = ent->updateReqVec(browserId);
 //        assert(ret == 1);
-                dbg_print_vector(ent, url, browserId, "network fetching");
+                dbg_print_vector(ent, url, browserId, "CACHE_FETCHING");
 
                 while(ent->getReqState() != CACHE_IN) {
-                        pthread_cond_wait(&cache_cond, &cache_mutex);
+                        cache_cond_wait();
                 }
         
-                dbg_print_vector(ent, url, browserId, "fetched");
+                dbg_print_vector(ent, url, browserId, "CACHE_FETCHING woken up when CACHE_IN");
         
                 sendBrowser(browserSock, ent, browserId);
         }
@@ -165,41 +165,67 @@ int Cache::votingFetchInsertWriteback(string url, string request, int browserId,
                 int ret = ent->updateReqVec(browserId);
 //        assert(ret == 1);
 
-                dbg_print_vector(ent, url, browserId, "voted, go fetching");
+                dbg_print_vector(ent, url, browserId, "CACHE_NEW => CACHE_FETCHING");
         
                 ent->setReqState(CACHE_FETCHING);
-                pthread_mutex_unlock(&cache_mutex);
-                fetch(ent, host, isSSL, browserId, replySock);
-                pthread_mutex_lock(&cache_mutex);
+                cache_unlock();
+                ret_val = fetch(ent, host, isSSL, browserId, replySock);
+                cache_lock();
+
+                dbg_print_vector(ent, url, browserId, "CACHE_FETCHING => CACHE_IN");
+                
                 ent->setReqState(CACHE_IN);
                 sendBrowser(browserSock, ent, browserId);
         }
         else
                 assert(false);
-        return 0;
+        return ret_val;
 }
 
 int Cache::sendBrowser(MySocket *browserSock, CacheEntry *ent, int browserId) {
         cache_dbg("sendBrowser send to browser %d, response length %d\n", browserId, ent->getResponse().length());
         bool ret = browserSock->write_bytes(ent->getResponse().c_str(), ent->getResponse().length());
-    
+        assert(ret);
         ent->updateRespVec(browserId);
         return 0;
 }
 
 void Cache::getHTTPResponseVote(string host, string request, string url, int serverPort, 
-                                MySocket *browserSock, bool isSSL, MySocket *replySock)
-{    
+                                MySocket *browserSock, bool isSSL, MySocket *replySock) {
+        if(replySock == NULL) {
+                cout << "get...Vote(): replySock is NULL, give browser 404" << endl;
+                browserSock->write_bytes(reply404);
+                return;
+        }
         int browserId = -1;
-        pthread_mutex_lock(&cache_mutex);
+        cache_lock();
         browserId = serverPort - serverPorts[0];
 
         votingFetchInsertWriteback(url, request, browserId, browserSock, host, isSSL, replySock);
 
-        pthread_mutex_unlock(&cache_mutex);
+        cache_unlock();
 
+        cache_cond_broadcast();
+}
+
+void Cache::cache_lock() {
+        cache_dbg("cache_lock\n");
+        pthread_mutex_lock(&cache_mutex);
+}
+void Cache::cache_unlock() {
+        cache_dbg("cache_unlock\n");
+        pthread_mutex_unlock(&cache_mutex);
+}
+void Cache::cache_cond_wait() {
+        cache_dbg("before cache_wait\n");
+        pthread_cond_wait(&cache_cond, &cache_mutex);
+        cache_dbg("after cache_wait\n");
+}
+void Cache::cache_cond_broadcast() {
+        cache_dbg("cache_cond_broadcastt\n");
         pthread_cond_broadcast(&cache_cond);
 }
+
 
 static void dbg_fetch(int ret) {
         switch(ret) {
@@ -207,7 +233,7 @@ static void dbg_fetch(int ret) {
                 cache_dbg("ESOCKET_CONNECTED returned by replySock->read()\n");
                 break;
             case ECONN_CLOSED:
-                    //cache_dbg("ESOCKET_CLOSED returned by replySock->read()\n");
+                cache_dbg("ESOCKET_CLOSED returned by replySock->read()\n");
                 break;
             case ESOCKET_ERROR:
                 cache_dbg("ESOCKET_ERROR returned by replySock->read()\n");
@@ -220,25 +246,22 @@ static void dbg_fetch(int ret) {
 
 
 int Cache::fetch(CacheEntry *ent, string host, bool isSSL, int browserId, MySocket *replySock) {
-        if(replySock == NULL) {
-                cout << "returning 404" << endl;
-                ent->appendResponse(reply404);
-                return -1;
-        }
         if(!replySock->write_bytes(ent->getRequest())) {
-                cout << "returning 404" << endl;
+                cerr << "fetch() fail to send request, give browser 404" << endl;
                 ent->appendResponse(reply404);
+                delete replySock;
                 return -1;
         }
-        printf("FETCH CALLED %s, response length: %d\n", ent->getUrl().c_str(), ent->getResponse().length());
+        printf("%d FETCH CALLED %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
         unsigned char buf[1024];
         int num_bytes;
         while((num_bytes = replySock->read(buf, sizeof(buf))) > 0) {
+                cerr << "read " << num_bytes << " from " << browserId << ent->getUrl().c_str() << endl;
                 ent->appendResponse((const char *)buf, num_bytes);
         }
         dbg_fetch(num_bytes);
 
-        printf("FETCHED %s, response length: %d\n", ent->getUrl().c_str(), ent->getResponse().length());
+        printf("%d FETCHED %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
         delete replySock;
         return 0;
 }
@@ -247,6 +270,7 @@ void Cache::handleResponse(MySocket *browserSock, MySocket *replySock, string re
 {
         if(!replySock->write_bytes(request)) {
                     // XXX FIXME we should do something other than 404 here
+                cerr << "handleResponse() fail to send request, give browser 404" << endl;
                 browserSock->write_bytes(reply404);
                 return;
         }
@@ -265,7 +289,7 @@ void Cache::getHTTPResponseNoVote(string host, string request, string url, int s
                                   MySocket *browserSock, bool isSSL, MySocket *replySock)
 {
         if(replySock == NULL) {
-                cout << "returning 404" << endl;
+                cout << "get...NoVote(): replySock is NULL, give browser 404" << endl;
                 browserSock->write_bytes(reply404);
                 return;
         }

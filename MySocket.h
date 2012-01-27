@@ -66,8 +66,8 @@ class MySocket {
     bool write_bytes(std::string buffer);
     bool write_bytes(const void *buffer, int len);
     void __enableSSLServer(void);
-    void enableSSLServer(MySocket *, string);
-    void enableSSLClient(void);
+    void enableSSLServer(MySocket *, string, int);
+    void enableSSLClient(int);
   
         /*
          * a helper function so select can be used

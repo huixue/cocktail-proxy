@@ -110,9 +110,9 @@ void run_client(MySocket *sock, int serverPort)
                                 error = true;
                         } else {
                                 delete request;
-                                replySock = cache()->getReplySocket(host, true);
+                                replySock = cache()->getReplySocket(host, true, serverPort);
                                     //need proxy <--> remotesite socket for information needed to fake a certificate
-                                sock->enableSSLServer(replySock, host.substr(0, host.find(':')));
+                                sock->enableSSLServer(replySock, host.substr(0, host.find(':')), serverPort);
                                         
                                 isSSL = true;
                                 request = new HTTPRequest(sock, serverPort);
@@ -121,24 +121,18 @@ void run_client(MySocket *sock, int serverPort)
                                 }
                         }            
                 } else
-                        replySock = cache()->getReplySocket(host, false);
+                        replySock = cache()->getReplySocket(host, false, serverPort);
         
                 if(!error) {
                         string req = request->getRequest();
                             //these two lines here are for HTTPS, otherwise host and url are the ones in CONNECT
                         host = request->getHost();
                         url = request->getUrl();
-
-                            //cerr << serverPort << " request for " << host << " " << url << endl;
-
+                        cerr << serverPort << " request for " << host << " " << url << endl;
                         int isUI = uimgr()->isUIRequest(url);
                         if(isUI != 0) {
                                     //cerr << serverPort << " request for " << host << " " << url << endl;
-                                if(isUI > 0)
-                                        uimgr()->processUILog(sock, url, serverPort, isSSL);
-                                else
-                                        uimgr()->processUIGet(sock, serverPort, isSSL);
-
+                                uimgr()->processUI(sock, url, serverPort, isSSL, isUI);
                                     //hx: I think if this is missing, it cause use out of file descriptor
                                 replySock->close();
                         }
@@ -150,8 +144,7 @@ void run_client(MySocket *sock, int serverPort)
                                 }
                         }
                 }
-        }    
-
+        }
         sock->close();
         delete request;
 }

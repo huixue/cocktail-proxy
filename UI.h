@@ -15,8 +15,7 @@ class UIMgr {
     UIMgr();
     ~UIMgr();
     int isUIRequest(string url);
-    void processUILog(MySocket *sock, string url, int serverPort, bool isSSL);
-    void processUIGet(MySocket *sock, int serverPort, bool isSSL);
+    void processUI(MySocket *sock, string url, int serverPort, bool isSSL, int type);
   protected:
     deque<UIQueueEntry *> ui_queue;
     pthread_mutex_t ui_mutex;
@@ -26,6 +25,9 @@ class UIMgr {
     void putLock(string msg = "");
     string decodeUrl(string url);
 
+    void processUILog(MySocket *sock, string url, int serverPort, bool isSSL);
+    void processUIGet(MySocket *sock, int serverPort, bool isSSL);
+    
     void processUILog_http(MySocket *sock, string url, int serverPort);
     void processUILog_https(MySocket *sock, string url, int serverPort);
     void processUIGet_http(MySocket *sock, int serverPort);

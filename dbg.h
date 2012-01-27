@@ -11,7 +11,7 @@
 
 #define ui_dbg(...);
 
-//#define cache_dbg(...) do{printf(__VA_ARGS__);}while(0);
+#define cache_dbg(...) do{printf(__VA_ARGS__);}while(0);
     
 //#define httpreq_dbg(...) do{printf(__VA_ARGS__);}while(0);
 

@@ -63,8 +63,8 @@
 using namespace std;
 
 //#define CHK_SSL(err) if ((err) <= 0) {printf("CHK_SSL failed\n"); ERR_print_errors_fp(stderr); exit(2); }
-#define ASSERT_SSL(err, msg, socket) if ((err) <= 0) {          \
-            printf("ASSERT_SSL err: %d %s\n", err, msg);        \
+#define ASSERT_SSL(err, msg, socket, port) if ((err) <= 0) {         \
+            printf("%d ASSERT_SSL err: %d %s\n", port, err, msg);     \
             socket->printSSLError(err);                         \
             ERR_print_errors_fp(stderr);}
 
@@ -295,7 +295,7 @@ void MySocket::close(void)
     ctx = NULL;
 }
 
-void MySocket::enableSSLServer(MySocket *clientSock, string host)
+void MySocket::enableSSLServer(MySocket *clientSock, string host, int serverPort)
 {
     if(sockFd < 0) return;
 
@@ -330,7 +330,7 @@ void MySocket::enableSSLServer(MySocket *clientSock, string host)
     int err = 1, ret = SSL_ERROR_NONE;
     do {
             err = SSL_accept (ssl);
-            ASSERT_SSL(err, "SSL_accept in enableSSLServer()\n", this);
+            ASSERT_SSL(err, "SSL_accept in enableSSLServer()\n", this, serverPort);
             ret = SSL_get_error(ssl, err);
     } while(ret == SSL_ERROR_WANT_READ || ret == SSL_ERROR_WANT_WRITE);
     
@@ -340,7 +340,7 @@ void MySocket::enableSSLServer(MySocket *clientSock, string host)
     isSSLBrowserSock = 1;
 }
 
-void MySocket::enableSSLClient(void)
+void MySocket::enableSSLClient(int serverPort)
 {
     if(sockFd < 0) return;
 
@@ -353,8 +353,18 @@ void MySocket::enableSSLClient(void)
     ssl = SSL_new (ctx);                         CHK_NULL(ssl);
     SSL_set_fd (ssl, sockFd);
     int err = SSL_connect (ssl);
-    ASSERT_SSL(err, "SSL_connect in enableClient()\n", this);
+    ASSERT_SSL(err, "SSL_connect in enableClient()\n", this, serverPort);
         //CHK_SSL(err);
+
+    struct timeval tv;
+    tv.tv_usec = 0;
+    tv.tv_sec = 3;
+    int ret = setsockopt(sockFd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval));
+    if(ret) {
+            perror("setsockopt fail");
+            assert(false);
+    }
+    
     
     mitm_dbg("SSL connection using %s\n", SSL_get_cipher (ssl));
 /*
@@ -520,7 +530,7 @@ void MySocket::__enableSSLServer(void)
     ssl = SSL_new (ctx);                           CHK_NULL(ssl);
     SSL_set_fd (ssl, sockFd);
     int err = SSL_accept (ssl);
-    ASSERT_SSL(err, "SSL_accept", this);
+        //ASSERT_SSL(err, "SSL_accept", this);
         //CHK_SSL(err);
   
     printf ("SSL connection using %s\n", SSL_get_cipher (ssl));

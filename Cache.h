@@ -15,7 +15,7 @@ class Cache {
                                    int serverPort, MySocket *browserSock, bool isSSL, MySocket *replySock);
         void getHTTPResponseVote(std::string host, std::string request, std::string url, 
                                  int serverPort, MySocket *browserSock, bool isSSL, MySocket *replySock);
-        MySocket *getReplySocket(std::string host, bool isSSL);
+        MySocket *getReplySocket(std::string host, bool isSSL, int serverPort);
         static void setNumBrowsers(const int num);
   protected:
         void handleResponse(MySocket *browserSock, MySocket *replySock, std::string request);
@@ -36,7 +36,11 @@ class Cache {
         int sendBrowser(MySocket *browserSock, CacheEntry *ent, int browserId);
 
         int fetch(CacheEntry *ent, std::string host, bool isSSL, int browserId, MySocket *replySock);
-    
+
+        void cache_lock();
+        void cache_unlock();
+        void cache_cond_wait();
+        void cache_cond_broadcast();
 
         std::map<std::string, CacheEntry*> m_store;
 

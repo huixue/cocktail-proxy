@@ -104,6 +104,15 @@ string UIMgr::decodeUrl(string url) {
     return ret;
 }
 
+void UIMgr::processUI(MySocket *sock, string url, int serverPort, bool isSSL, int type) {
+        assert(type != 0);
+        if(type > 0)
+                processUILog(sock, url, serverPort, isSSL);
+        else
+                processUIGet(sock, serverPort, isSSL);
+}
+
+
 void UIMgr::processUILog(MySocket *sock, string url, int serverPort, bool isSSL) {
     if(!isSSL) {
         processUILog_http(sock, url, serverPort);
