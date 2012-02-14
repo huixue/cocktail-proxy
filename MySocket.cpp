@@ -11,7 +11,7 @@
 **    Science The University of Illinois at Urbana-Champaign 
 **    http://www.cs.uiuc.edu/homes/kingst/Research.html 
 **
-** Copyright (C) Sam King
+** Copyright (C) Sam King and Hui Xue
 **
 ** Permission is hereby granted, free of charge, to any person obtaining a 
 ** copy of this software and associated documentation files (the 

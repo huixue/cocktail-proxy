@@ -11,7 +11,7 @@
 **    Science The University of Illinois at Urbana-Champaign 
 **    http://www.cs.uiuc.edu/homes/kingst/Research.html 
 **
-** Copyright (C) Sam King
+** Copyright (C) Sam King and Hui Xue
 **
 ** Permission is hereby granted, free of charge, to any person obtaining a 
 ** copy of this software and associated documentation files (the 
@@ -91,7 +91,7 @@ MySocket *Cache::getReplySocket(string host, bool isSSL, int serverPort)
         return replySock;
 }
 
-//XXX: should check url, method, cookie, possible even port
+//XXX: should check url, method, cookie, possible even port, like what we did in Java version
 CacheEntry *Cache::find(string url, string /*request*/) {
         map<string, CacheEntry *>::iterator i = m_store.find(url);
         if(i == m_store.end())
@@ -107,7 +107,7 @@ void Cache::addToStore(string url, CacheEntry *ent) {
 
 static void dbg_print_vector(CacheEntry *ent, string url, int browserId, string msg) {
         vector<int> v = ent->getReqVec();
-        printf("%d: %d %d %d %s: %s\n", browserId, v[0], v[1], v[2], url.c_str(), msg.c_str());
+        cache_dbg("%d: %d %d %d %s: %s\n", browserId, v[0], v[1], v[2], url.c_str(), msg.c_str());
 }
 
 
@@ -252,16 +252,16 @@ int Cache::fetch(CacheEntry *ent, string host, bool isSSL, int browserId, MySock
                 delete replySock;
                 return -1;
         }
-        printf("%d FETCH CALLED %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
+        cache_dbg("%d FETCH CALLED %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
         unsigned char buf[1024];
         int num_bytes;
         while((num_bytes = replySock->read(buf, sizeof(buf))) > 0) {
-                cerr << "read " << num_bytes << " from " << browserId << ent->getUrl().c_str() << endl;
+                    //cerr << "read " << num_bytes << " from " << browserId << ent->getUrl().c_str() << endl;
                 ent->appendResponse((const char *)buf, num_bytes);
         }
         dbg_fetch(num_bytes);
 
-        printf("%d FETCHED %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
+        cache_dbg("%d FETCHED %s, response length: %d\n", browserId, ent->getUrl().c_str(), ent->getResponse().length());
         delete replySock;
         return 0;
 }
@@ -289,7 +289,7 @@ void Cache::getHTTPResponseNoVote(string host, string request, string url, int s
                                   MySocket *browserSock, bool isSSL, MySocket *replySock)
 {
         if(replySock == NULL) {
-                cout << "get...NoVote(): replySock is NULL, give browser 404" << endl;
+                cerr << "get...NoVote(): replySock is NULL, give browser 404" << endl;
                 browserSock->write_bytes(reply404);
                 return;
         }
